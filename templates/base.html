@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+    {% block title %}<title>{{ context["heading"] }}</title>{% endblock title %}
+    <link href="//fonts.googleapis.com/css?family=Raleway:400,300,600" rel="stylesheet" type="text/css">
+    <link rel="shortcut icon" type="image/x-icon" href="{{ url_for('static', filename='img/favicon.png')}}">
+    {% block css %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/normalize.css')}}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/skeleton.css')}}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/custom.css')}}">
+    {% endblock css %}
+  </head>
+  <body>
+    <div class="wrapper">
+      <main class="container">
+        <div class="row">
+          <h1>{{ context["heading"] }}</h1>
+          {% block content %}
+          {% endblock content %}
+        </div>
+      </main>
+    </div>
+  </body>
+</html>
