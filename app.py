@@ -1,4 +1,5 @@
 from os import environ
+from ast import literal_eval
 import requests
 from functools import wraps
 from urlparse import urlparse, urljoin
@@ -15,9 +16,14 @@ app.config['GITHUB_CLIENT_ID'] = environ.get('GITHUB_CLIENT_ID')
 app.config['GITHUB_CLIENT_SECRET'] = environ.get('GITHUB_CLIENT_SECRET')
 app.config['GITHUB_ORG_NAME'] = environ.get('GITHUB_ORG_NAME')
 app.config['SECRET_KEY'] = environ.get('FLASK_SECRET_KEY')
-app.config['SESSION_COOKIE_SECURE'] = environ.get('SESSION_COOKIE_SECURE', True)
+app.config['SESSION_COOKIE_SECURE'] = literal_eval(environ.get('SESSION_COOKIE_SECURE', 'True'))
 app.config['LOGIN_EXPIRY_MINUTES'] = environ.get('LOGIN_EXPIRY', 30)
 app.config['LOG_LEVEL'] = environ.get('LOG_LEVEL', 'WARNING')
+# Specific to this proxy
+app.config['MAX_CONTENT_LENGTH'] = environ.get('MAX_CONTENT_LENGTH', 16 * 1024 * 1024) ## 16MB
+app.config['S3_BUCKET'] = environ.get('S3_BUCKET')
+app.config['AWS_ACCESS_KEY_ID'] = environ.get('AWS_ACCESS_KEY_ID')
+app.config['AWS_SECRET_ACCESS_KEY'] = environ.get('AWS_SECRET_ACCESS_KEY')
 
 # register error handlers
 error_handling.init_app(app)
@@ -26,6 +32,7 @@ AUTHORIZE_URL = 'https://github.com/login/oauth/authorize'
 ACCESS_TOKEN_URL = 'https://github.com/login/oauth/access_token'
 ORGS_URL = 'https://api.github.com/user/orgs'
 REVOKE_TOKEN_URL = 'https://api.github.com/applications/{}/tokens/'.format(app.config['GITHUB_CLIENT_ID'])
+
 
 ###
 ### UTILS ###
@@ -70,7 +77,7 @@ def is_safe_url(target):
 ### ROUTES
 ###
 
-@app.route('/', defaults={'path': ''})
+@app.route('/', defaults={'path': ''}, methods=['GET', 'POST'])
 @app.route('/<path:path>')
 @login_required
 def catch_all(path):

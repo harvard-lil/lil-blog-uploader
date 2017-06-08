@@ -12,3 +12,10 @@ div.wrapper {
     justify-content:center;
     text-align: center;
 }
+
+input[type="file"] {
+    width: 200px;
+    padding-top: 30px;
+    padding-bottom: 45px;
+    line-height: 10px;
+}
