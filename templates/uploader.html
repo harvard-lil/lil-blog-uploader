@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <form method="POST" enctype="multipart/form-data" action="/">
+    {{ form.csrf_token }}
+    {% if form.errors %}
+      <div class="form-errors" style="width: 67%;
+                                      padding-top: 15px;
+                                      margin: auto;
+                                      margin-bottom: 15px;
+                                      border: 1px solid #FF6666;">
+        <p>Please correct the following <strong>{{form.errors|length}} error(s)</strong>: </p>
+        <ul>
+          {% for field_name, field_errors in form.errors|dictsort %}{% for error in field_errors %}
+          <li>{{form[field_name].name}}: {{ error }}</li>
+          {% endfor %}{% endfor %}
+          </ul>
+      </div>
+    {% endif %}
+    <p>Upload any png, gif, or jpeg up to {{ context['limit'] }} MB</p>
+    {{ form.file(accept=".png,.jpg,.jpeg,.gif") }}
+    <p><button class="button button-primary" type="submit">Upload</button></p>
+
+  </form>
+{% endblock content %}
