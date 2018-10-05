@@ -60,7 +60,7 @@ def login_required(func):
         else:
             app.logger.debug("Redirecting to GitHub")
             session['next'] = request.url
-            return redirect('{}?scope=user&client_id={}'.format(AUTHORIZE_URL, app.config['GITHUB_CLIENT_ID']))
+            return redirect('{}?scope=read:org&client_id={}'.format(AUTHORIZE_URL, app.config['GITHUB_CLIENT_ID']))
     return handle_login
 
 def is_safe_url(target):
@@ -128,7 +128,7 @@ def authorized():
         app.logger.error("Failed request for access token. Gitub says {}".format(data['message']))
         abort(500)
 
-    if scope == 'user':
+    if scope == 'read:org':
         app.logger.debug("Requesting User Organization Info")
         r = requests.get(ORGS_URL, headers={'accept': 'application/json',
                                             'authorization': 'token {}'.format(access_token)})
