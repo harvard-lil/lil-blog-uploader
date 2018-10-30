@@ -1,0 +1,6 @@
+pip-tools
+boto3
+Flask
+Flask-WTF
+gunicorn
+requests
