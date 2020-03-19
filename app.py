@@ -31,7 +31,7 @@ error_handling.init_app(app)
 AUTHORIZE_URL = 'https://github.com/login/oauth/authorize'
 ACCESS_TOKEN_URL = 'https://github.com/login/oauth/access_token'
 ORGS_URL = 'https://api.github.com/user/orgs'
-REVOKE_TOKEN_URL = 'https://api.github.com/applications/{}/tokens/'.format(app.config['GITHUB_CLIENT_ID'])
+REVOKE_TOKEN_URL = 'https://api.github.com/applications/{}/token'.format(app.config['GITHUB_CLIENT_ID'])
 
 
 ###
@@ -134,7 +134,9 @@ def authorized():
                                             'authorization': 'token {}'.format(access_token)})
 
         app.logger.debug("Revoking Github Access Token")
-        d = requests.delete(REVOKE_TOKEN_URL + access_token, auth=(app.config['GITHUB_CLIENT_ID'], app.config['GITHUB_CLIENT_SECRET']))
+        d = requests.delete(REVOKE_TOKEN_URL,
+                            auth=(app.config['GITHUB_CLIENT_ID'], app.config['GITHUB_CLIENT_SECRET']),
+                            data={'access_token': access_token})
         app.logger.debug("(Request returned {})".format(d.status_code))
 
         data = r.json()
