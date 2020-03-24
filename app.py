@@ -186,10 +186,6 @@ def landing():
     return render_template('uploader.html', context={'heading': 'Upload Media', 'limit': current_app.config['MAX_CONTENT_LENGTH']//1024//1024}, form=form)
 
 
-@app.route('/login')
-def login():
-    return render_template('login.html', context={'heading': 'Log In', 'client_id': app.config['GITHUB_CLIENT_ID']})
-
 @app.route("/logout")
 def logout():
     session.clear()
