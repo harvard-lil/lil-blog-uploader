@@ -2,7 +2,7 @@ from os import environ
 from ast import literal_eval
 import requests
 from functools import wraps
-from urlparse import urlparse, urljoin
+from urllib.parse import urlparse, urljoin
 from datetime import datetime, timedelta
 
 from flask import Flask, request, redirect, session, abort, url_for, render_template
@@ -79,7 +79,7 @@ def is_safe_url(target):
 
 @app.route('/', defaults={'path': ''}, methods=['GET', 'POST'])
 @app.route('/<path:path>')
-@login_required
+# @login_required
 def catch_all(path):
     '''
         All requests are caught by this route, unless explicitly caught by
