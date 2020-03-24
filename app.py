@@ -216,7 +216,7 @@ def authorized():
         app.logger.debug("Revoking Github Access Token")
         d = requests.delete(REVOKE_TOKEN_URL,
                             auth=(app.config['GITHUB_CLIENT_ID'], app.config['GITHUB_CLIENT_SECRET']),
-                            data={'access_token': access_token})
+                            json={'access_token': access_token})
         app.logger.debug("(Request returned {})".format(d.status_code))
 
         data = r.json()
