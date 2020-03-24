@@ -21,7 +21,7 @@ def error_handler(error):
         msg = "Request resulted in {}".format(name)
         current_app.logger.error(msg, exc_info=error)
 
-    heading = name + " (" + unicode(code) + ")"
+    heading = name + " (" + str(code) + ")"
     message = description
 
     templates_to_try = ['{}.html'.format(code), 'generic.html']
