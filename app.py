@@ -160,7 +160,7 @@ class UploadForm(FlaskForm):
 ###
 
 @app.route('/', methods=['GET', 'POST'])
-# @login_required
+@login_required
 def landing():
     form = UploadForm()
     if form.validate_on_submit():
