@@ -229,7 +229,7 @@ def authorized():
                 session['logged_in'] = "yes"
                 if next and is_safe_url(next):
                     return redirect(next)
-                return redirect(url_for('catch_all'))
+                return redirect(url_for('landing'))
             else:
                 app.logger.warning("Log in attempt from Github user who is not a member of LIL.")
                 abort(401)
