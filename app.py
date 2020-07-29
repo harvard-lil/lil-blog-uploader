@@ -4,7 +4,7 @@ import botocore
 from datetime import datetime, timedelta
 from functools import wraps
 import imghdr
-from os import environ
+from os import environ, path
 import random
 import requests
 import string
@@ -170,7 +170,7 @@ def landing():
         unique_filename = False
         while not unique_filename:
             if filename_already_used(filename):
-                fn, ext = os.path.splitext(filename)
+                fn, ext = path.splitext(filename)
                 filename = '{}-{}{}'.format(fn, ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(3)), ext)
                 continue
             unique_filename = True
