@@ -95,6 +95,7 @@ def is_safe_url(target):
 file_extension_lookup = {
     'jpg': 'image/jpeg',
     'jpeg': 'image/jpeg',
+    'pdf': 'application/pdf',
     'png': 'image/png',
     'gif': 'image/gif'
 }
@@ -114,6 +115,10 @@ mime_type_lookup = {
     'image/gif': {
         'new_extension': 'gif',
         'valid_file': lambda f: imghdr.what(f) == 'gif',
+    },
+    'application/pdf': {
+        'new_extension': 'pdf',
+        'valid_file': lambda f: b'%PDF-' in f.read(10),
     }
 }
 
