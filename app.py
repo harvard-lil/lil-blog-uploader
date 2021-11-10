@@ -100,6 +100,11 @@ file_extension_lookup = {
     'gif': 'image/gif'
 }
 
+def validate_pdf(file):
+    valid = b'%PDF-' in file.read(10)
+    file.seek(0)
+    return valid
+
 # Map allowed mime types to new file extensions and validation functions.
 # We manually pick the new extension instead of using MimeTypes().guess_extension,
 # because that varies between systems.
@@ -118,7 +123,7 @@ mime_type_lookup = {
     },
     'application/pdf': {
         'new_extension': 'pdf',
-        'valid_file': lambda f: b'%PDF-' in f.read(10),
+        'valid_file': validate_pdf,
     }
 }
 
