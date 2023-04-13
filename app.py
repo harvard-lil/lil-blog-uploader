@@ -97,7 +97,8 @@ file_extension_lookup = {
     'jpeg': 'image/jpeg',
     'pdf': 'application/pdf',
     'png': 'image/png',
-    'gif': 'image/gif'
+    'gif': 'image/gif',
+    'webp': 'image/webp'
 }
 
 def validate_pdf(file):
@@ -120,6 +121,10 @@ mime_type_lookup = {
     'image/gif': {
         'new_extension': 'gif',
         'valid_file': lambda f: imghdr.what(f) == 'gif',
+    },
+    'image/webp': {
+        'new_extension': 'webp',
+        'valid_file': lambda f: imghdr.what(f) == 'webp',
     },
     'application/pdf': {
         'new_extension': 'pdf',
