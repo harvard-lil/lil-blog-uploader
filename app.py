@@ -47,8 +47,7 @@ REVOKE_TOKEN_URL = 'https://api.github.com/applications/{}/token'.format(app.con
 ### UTILS ###
 ###
 
-@app.before_first_request
-def setup_logging():
+with app.app_context():
     if not app.debug:
         # In production mode, add log handler to sys.stderr.
         app.logger.addHandler(logging.StreamHandler())
