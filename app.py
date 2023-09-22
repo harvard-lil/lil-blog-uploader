@@ -116,6 +116,8 @@ def validate_svg(file):
 
     contents = file.read().decode('utf-8')
 
+    file.seek(0)
+
     return regex.match(contents) is not None
 
 # Map allowed mime types to new file extensions and validation functions.
