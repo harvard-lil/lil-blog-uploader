@@ -1,3 +1,4 @@
+import re
 from ast import literal_eval
 import boto3
 import botocore
@@ -97,13 +98,25 @@ file_extension_lookup = {
     'pdf': 'application/pdf',
     'png': 'image/png',
     'gif': 'image/gif',
-    'webp': 'image/webp'
+    'webp': 'image/webp',
+    'svg': 'image/svg+xml'
 }
 
 def validate_pdf(file):
     valid = b'%PDF-' in file.read(10)
     file.seek(0)
     return valid
+
+# Source: https://stackoverflow.com/a/63419911
+def validate_svg(file):
+    regex = re.compile(
+        r'(?:<\?xml\b[^>]*>[^<]*)?(?:<!--.*?-->[^<]*)*(?:<svg|<!DOCTYPE svg)\b',
+        re.DOTALL
+    )
+
+    contents = file.read().decode('utf-8')
+
+    return regex.match(contents) is not None
 
 # Map allowed mime types to new file extensions and validation functions.
 # We manually pick the new extension instead of using MimeTypes().guess_extension,
@@ -124,6 +137,10 @@ mime_type_lookup = {
     'image/webp': {
         'new_extension': 'webp',
         'valid_file': lambda f: imghdr.what(f) == 'webp',
+    },
+    'image/svg+xml': {
+        'new_extension': 'svg',
+        'valid_file': validate_svg
     },
     'application/pdf': {
         'new_extension': 'pdf',
