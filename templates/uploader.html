@@ -17,7 +17,7 @@
           </ul>
       </div>
     {% endif %}
-    <p>Upload any png, gif, jpeg, or pdf up to {{ context['limit'] }} MB</p>
+    <p>Upload any png, gif, jpeg, pdf, webp, or svg file up to {{ context['limit'] }} MB</p>
     {{ form.file(accept=".png,.jpg,.jpeg,.gif,.pdf,.webp,.svg") }}
     <p><button class="button button-primary" type="submit">Upload</button></p>
 
