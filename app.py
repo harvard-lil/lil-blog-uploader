@@ -32,8 +32,6 @@ app.config['LOG_LEVEL'] = environ.get('LOG_LEVEL', 'WARNING')
 # Specific to this proxy
 app.config['MAX_CONTENT_LENGTH'] = environ.get('MAX_CONTENT_LENGTH', 16 * 1024 * 1024) ## 16MB
 app.config['S3_BUCKET'] = environ.get('S3_BUCKET')
-app.config['AWS_ACCESS_KEY_ID'] = environ.get('AWS_ACCESS_KEY_ID')
-app.config['AWS_SECRET_ACCESS_KEY'] = environ.get('AWS_SECRET_ACCESS_KEY')
 
 # register error handlers
 error_handling.init_app(app)
@@ -158,10 +156,7 @@ def get_mime_type(file_name):
 
 def filename_already_used(filename):
     """Technique from https://stackoverflow.com/a/33843019"""
-    s3 = boto3.resource('s3',
-            aws_access_key_id=current_app.config['AWS_ACCESS_KEY_ID'],
-            aws_secret_access_key=current_app.config['AWS_SECRET_ACCESS_KEY']
-    )
+    s3 = boto3.resource('s3')
     exists = False
     try:
         s3.Object(current_app.config['S3_BUCKET'], filename).load()
@@ -208,11 +203,7 @@ def landing():
                 continue
             unique_filename = True
         # Upload to s3
-        s3 = boto3.client(
-            's3',
-            aws_access_key_id=current_app.config['AWS_ACCESS_KEY_ID'],
-            aws_secret_access_key=current_app.config['AWS_SECRET_ACCESS_KEY'],
-        )
+        s3 = boto3.client('s3')
         s3.upload_fileobj(f.stream, 'lil-blog-media', filename, ExtraArgs={'ContentType': get_mime_type(filename)})
         return render_template('success.html', context={'heading': "Your file is up!" ,
                                                         'url': "https://{}.s3.amazonaws.com/{}".format(current_app.config['S3_BUCKET'], filename) })
