@@ -2,13 +2,14 @@
 package-mode = false
 
 [tool.poetry.dependencies]
-python = "^3.12"
+python = ">=3.13,<4.0"
 boto3 = "^1.41.0"
 flask = "^3.1.0"
 flask-wtf = "^1.2.2"
 gunicorn = "^23.0.0"
 requests = "^2.33.0"
 urllib3 = ">=2.6.3,<3.0.0"
+standard-imghdr = "^3.13.0"
 
 [build-system]
 requires = ["poetry-core"]
