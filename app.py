@@ -219,6 +219,11 @@ def landing():
     return render_template('uploader.html', context={'heading': 'Upload Media', 'limit': current_app.config['MAX_CONTENT_LENGTH']//1024//1024}, form=form)
 
 
+@app.route('/health')
+def health():
+    return {"status": "healthy"}, 200
+
+
 @app.route("/logout")
 def logout():
     session.clear()
