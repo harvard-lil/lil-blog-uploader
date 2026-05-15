@@ -204,10 +204,15 @@ def landing():
             unique_filename = True
         # Upload to s3
         s3 = boto3.client('s3')
-        s3.upload_fileobj(f.stream, 'lil-blog-media', filename, ExtraArgs={'ContentType': get_mime_type(filename)})
+        s3.upload_fileobj(f.stream, current_app.config['S3_BUCKET'], filename, ExtraArgs={'ContentType': get_mime_type(filename)})
         return render_template('success.html', context={'heading': "Your file is up!" ,
                                                         'url': "https://{}.s3.amazonaws.com/{}".format(current_app.config['S3_BUCKET'], filename) })
     return render_template('uploader.html', context={'heading': 'Upload Media', 'limit': current_app.config['MAX_CONTENT_LENGTH']//1024//1024}, form=form)
+
+
+@app.route('/health')
+def health():
+    return {"status": "healthy"}, 200
 
 
 @app.route("/logout")
