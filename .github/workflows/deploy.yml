@@ -1,0 +1,13 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    uses: harvard-lil/lil-actions/.github/workflows/ecs-simple-deploy.yml@main
+    with:
+      app-name: blog-uploader
+    secrets:
+      aws-role-arn: ${{ secrets.AWS_ROLE_ARN }}

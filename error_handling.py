@@ -3,7 +3,7 @@
    Serves the user an appropriate error page, and if appropriate,
    logs the error (which notifies application admins)."""
 # Adapted from https://realpython.com/blog/python/python-web-applications-with-flask-part-iii/
-from flask import current_app, Markup, render_template, request
+from flask import current_app, render_template, request
 from werkzeug.exceptions import default_exceptions, HTTPException
 
 def error_handler(error):
