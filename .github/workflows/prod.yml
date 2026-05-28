@@ -1,8 +1,8 @@
-name: Deploy to test
+name: Production - Deploy to AWS
 
 on:
   push:
-    branches: [test]
+    branches: [prod]
 
 jobs:
   deploy:
