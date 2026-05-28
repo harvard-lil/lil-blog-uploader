@@ -5,7 +5,20 @@ on:
     branches: [prod]
 
 jobs:
+  check-branch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR source branch
+        if: github.event_name == 'pull_request'
+        run: |
+          if [ "${{ github.head_ref }}" != "main" ]; then
+            echo "❌ Pull requests to prod must come from 'main'. Got: '${{ github.head_ref }}'"
+            exit 1
+          fi
+          echo "✅ PR source branch is 'main'. Proceeding."
+
   deploy:
+    needs: check-branch
     uses: harvard-lil/lil-actions/.github/workflows/ecs-simple-deploy.yml@main
     with:
       app-name: blog-uploader
