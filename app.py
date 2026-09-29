@@ -2,18 +2,14 @@ import re
 from ast import literal_eval
 import boto3
 import botocore
-from datetime import datetime, timedelta
-from functools import wraps
 import imghdr
+import jwt
 from os import environ, path
 import random
-import requests
-import secrets
 import string
-from urllib.parse import urlparse, urljoin
 from werkzeug.utils import secure_filename
 
-from flask import Flask, request, redirect, session, abort, url_for, render_template, current_app
+from flask import Flask, request, redirect, abort, render_template, current_app, g
 from flask_wtf import FlaskForm
 from flask_wtf.file import FileField, FileRequired
 from wtforms.validators import ValidationError
@@ -23,26 +19,25 @@ import error_handling
 import logging
 
 app = Flask(__name__)
-app.config['GITHUB_CLIENT_ID'] = environ.get('GITHUB_CLIENT_ID')
-app.config['GITHUB_CLIENT_SECRET'] = environ.get('GITHUB_CLIENT_SECRET')
-app.config['GITHUB_ORG_NAME'] = environ.get('GITHUB_ORG_NAME')
+# Signs the session cookie, which holds only the upload form's CSRF token.
 app.config['SECRET_KEY'] = environ.get('FLASK_SECRET_KEY')
 app.config['SESSION_COOKIE_SECURE'] = literal_eval(environ.get('SESSION_COOKIE_SECURE', 'True'))
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-app.config['LOGIN_EXPIRY_MINUTES'] = environ.get('LOGIN_EXPIRY', 30)
 app.config['LOG_LEVEL'] = environ.get('LOG_LEVEL', 'WARNING')
+# Cloudflare Access: the team domain that signs identity tokens, and the
+# audience tag of the Access application in front of this app.
+app.config['ACCESS_TEAM_DOMAIN'] = environ.get('ACCESS_TEAM_DOMAIN', 'https://lil.cloudflareaccess.com')
+app.config['ACCESS_AUD'] = environ.get('ACCESS_AUD')
 # Specific to this proxy
-app.config['MAX_CONTENT_LENGTH'] = environ.get('MAX_CONTENT_LENGTH', 16 * 1024 * 1024) ## 16MB
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024 ## 16MB
 app.config['S3_BUCKET'] = environ.get('S3_BUCKET')
 
 # register error handlers
 error_handling.init_app(app)
 
-AUTHORIZE_URL = 'https://github.com/login/oauth/authorize'
-ACCESS_TOKEN_URL = 'https://github.com/login/oauth/access_token'
-USER_URL = 'https://api.github.com/user'
-ORGS_URL = 'https://api.github.com/user/orgs'
-REVOKE_TOKEN_URL = 'https://api.github.com/applications/{}/token'.format(app.config['GITHUB_CLIENT_ID'])
+# PyJWKClient caches Cloudflare's signing keys and refetches when a token
+# names a key it has not seen, which is how Access key rotation arrives.
+access_keys = jwt.PyJWKClient('{}/cdn-cgi/access/certs'.format(app.config['ACCESS_TEAM_DOMAIN']))
 
 
 ###
@@ -55,37 +50,36 @@ with app.app_context():
         app.logger.setLevel(getattr(logging, app.config['LOG_LEVEL']))
 
 
-def login_required(func):
-    @wraps(func)
-    def handle_login(*args, **kwargs):
-        logged_in = session.get('logged_in')
-        valid_until = session.get('valid_until')
-        if valid_until:
-            valid = datetime.strptime(valid_until, '%Y-%m-%d %H:%M:%S') > datetime.utcnow()
-        else:
-            valid = False
-        if logged_in and logged_in == "yes" and valid:
-            app.logger.debug("User session valid")
-            return func(*args, **kwargs)
-        else:
-            app.logger.debug("Redirecting to GitHub")
-            session['next'] = request.url
-            # Ties the callback to this browser's login attempt.
-            session['oauth_state'] = secrets.token_urlsafe(32)
-            return redirect('{}?scope=read:org&client_id={}&state={}'.format(
-                AUTHORIZE_URL, app.config['GITHUB_CLIENT_ID'], session['oauth_state']))
-    return handle_login
-
-
-def is_safe_url(target):
-    '''
-        Ensure a url is safe to redirect to, from WTForms
-        http://flask.pocoo.org/snippets/63/from WTForms
-    '''
-    ref_url = urlparse(request.host_url)
-    test_url = urlparse(urljoin(request.host_url, target))
-    return test_url.scheme in ('http', 'https') and \
-           ref_url.netloc == test_url.netloc
+@app.before_request
+def require_access_identity():
+    """
+    Cloudflare Access admits LIL's Keycloak users and forwards each request
+    with a signed identity token. Checking the token here, rather than trusting
+    that requests only arrive through Access, keeps the app closed if the Access
+    application is ever removed or the app is reached another way.
+    """
+    if request.endpoint in ('health', 'static'):
+        return
+    if app.debug and environ.get('DEV_USER_EMAIL'):
+        g.user_email = environ['DEV_USER_EMAIL']
+        return
+    token = request.headers.get('Cf-Access-Jwt-Assertion')
+    if not token:
+        abort(403)
+    try:
+        signing_key = access_keys.get_signing_key_from_jwt(token)
+        claims = jwt.decode(token, signing_key.key, algorithms=['RS256'],
+                            audience=app.config['ACCESS_AUD'],
+                            issuer=app.config['ACCESS_TEAM_DOMAIN'])
+    except jwt.PyJWKClientConnectionError:
+        app.logger.exception("Could not fetch Cloudflare Access signing keys")
+        abort(503)
+    except jwt.PyJWTError as e:
+        app.logger.warning("Rejected Cloudflare Access token: %s", e)
+        abort(403)
+    if not claims.get('email'):
+        abort(403)
+    g.user_email = claims['email']
 
 
 #
@@ -212,7 +206,6 @@ class UploadForm(FlaskForm):
 ###
 
 @app.route('/', methods=['GET', 'POST'])
-@login_required
 def landing():
     form = UploadForm()
     if form.validate_on_submit():
@@ -225,7 +218,7 @@ def landing():
         if not fn or not ext:
             filename = 'upload-{}.{}'.format(random_suffix(), f.filename.rsplit('.', 1)[-1].lower())
         filename = upload_new_object(f, filename)
-        app.logger.info("%s uploaded %s", session.get('github_login'), filename)
+        app.logger.info("%s uploaded %s", g.user_email, filename)
         return render_template('success.html', context={'heading': "Your file is up!" ,
                                                         'url': "https://{}.s3.amazonaws.com/{}".format(current_app.config['S3_BUCKET'], filename) })
     return render_template('uploader.html', context={'heading': 'Upload Media', 'limit': current_app.config['MAX_CONTENT_LENGTH']//1024//1024}, form=form)
@@ -238,64 +231,4 @@ def health():
 
 @app.route("/logout")
 def logout():
-    session.clear()
-    return render_template('generic.html', context={'heading': "Logged Out",
-                                                    'message': "You have successfully been logged out."})
-
-@app.route('/auth/github/callback')
-def authorized():
-    expected_state = session.pop('oauth_state', None)
-    if not expected_state or not secrets.compare_digest(expected_state, request.args.get('state', '')):
-        app.logger.warning("GitHub callback without a matching login attempt.")
-        abort(400)
-
-    app.logger.debug("Requesting Access Token")
-    r = requests.post(ACCESS_TOKEN_URL, headers={'accept': 'application/json'},
-                                        data={'client_id': app.config['GITHUB_CLIENT_ID'],
-                                              'client_secret': app.config['GITHUB_CLIENT_SECRET'],
-                                              'code': request.args.get('code')})
-    data = r.json()
-    if r.status_code == 200:
-        access_token = data.get('access_token')
-        scope = data.get('scope')
-        app.logger.debug("Received Access Token")
-    else:
-        app.logger.error("Failed request for access token. Gitub says {}".format(data['message']))
-        abort(500)
-
-    if scope == 'read:org':
-        app.logger.debug("Requesting User Organization Info")
-        auth_headers = {'accept': 'application/json',
-                        'authorization': 'token {}'.format(access_token)}
-        r = requests.get(ORGS_URL, headers=auth_headers)
-        u = requests.get(USER_URL, headers=auth_headers)
-        github_login = u.json().get('login') if u.status_code == 200 else None
-
-        app.logger.debug("Revoking Github Access Token")
-        d = requests.delete(REVOKE_TOKEN_URL,
-                            auth=(app.config['GITHUB_CLIENT_ID'], app.config['GITHUB_CLIENT_SECRET']),
-                            json={'access_token': access_token})
-        app.logger.debug("(Request returned {})".format(d.status_code))
-
-        data = r.json()
-        if r.status_code == 200:
-            if data and any(org['login'] == app.config['GITHUB_ORG_NAME'] for org in data):
-                next = session.get('next')
-                session.clear()
-                valid_until = (datetime.utcnow() + timedelta(seconds=60*30)).strftime('%Y-%m-%d %H:%M:%S')
-                session['valid_until'] = valid_until
-                session['logged_in'] = "yes"
-                session['github_login'] = github_login
-                app.logger.info("%s logged in", github_login)
-                if next and is_safe_url(next):
-                    return redirect(next)
-                return redirect(url_for('landing'))
-            else:
-                app.logger.warning("Log in attempt from Github user %s, who is not a member of LIL.", github_login)
-                abort(401)
-        else:
-            app.logger.error("Failed request for user orgs. Gitub says {}".format(data['message']))
-            abort(500)
-    else:
-        app.logger.warning("Insufficient scope authorized in Github; verify API hasn't changed.")
-        abort(401)
+    return redirect('/cdn-cgi/access/logout')
