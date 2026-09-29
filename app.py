@@ -8,6 +8,7 @@ import imghdr
 from os import environ, path
 import random
 import requests
+import secrets
 import string
 from urllib.parse import urlparse, urljoin
 from werkzeug.utils import secure_filename
@@ -27,6 +28,7 @@ app.config['GITHUB_CLIENT_SECRET'] = environ.get('GITHUB_CLIENT_SECRET')
 app.config['GITHUB_ORG_NAME'] = environ.get('GITHUB_ORG_NAME')
 app.config['SECRET_KEY'] = environ.get('FLASK_SECRET_KEY')
 app.config['SESSION_COOKIE_SECURE'] = literal_eval(environ.get('SESSION_COOKIE_SECURE', 'True'))
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['LOGIN_EXPIRY_MINUTES'] = environ.get('LOGIN_EXPIRY', 30)
 app.config['LOG_LEVEL'] = environ.get('LOG_LEVEL', 'WARNING')
 # Specific to this proxy
@@ -38,6 +40,7 @@ error_handling.init_app(app)
 
 AUTHORIZE_URL = 'https://github.com/login/oauth/authorize'
 ACCESS_TOKEN_URL = 'https://github.com/login/oauth/access_token'
+USER_URL = 'https://api.github.com/user'
 ORGS_URL = 'https://api.github.com/user/orgs'
 REVOKE_TOKEN_URL = 'https://api.github.com/applications/{}/token'.format(app.config['GITHUB_CLIENT_ID'])
 
@@ -48,8 +51,7 @@ REVOKE_TOKEN_URL = 'https://api.github.com/applications/{}/token'.format(app.con
 
 with app.app_context():
     if not app.debug:
-        # In production mode, add log handler to sys.stderr.
-        app.logger.addHandler(logging.StreamHandler())
+        # Flask's default handler already writes to sys.stderr.
         app.logger.setLevel(getattr(logging, app.config['LOG_LEVEL']))
 
 
@@ -68,7 +70,10 @@ def login_required(func):
         else:
             app.logger.debug("Redirecting to GitHub")
             session['next'] = request.url
-            return redirect('{}?scope=read:org&client_id={}'.format(AUTHORIZE_URL, app.config['GITHUB_CLIENT_ID']))
+            # Ties the callback to this browser's login attempt.
+            session['oauth_state'] = secrets.token_urlsafe(32)
+            return redirect('{}?scope=read:org&client_id={}&state={}'.format(
+                AUTHORIZE_URL, app.config['GITHUB_CLIENT_ID'], session['oauth_state']))
     return handle_login
 
 
@@ -154,20 +159,39 @@ def get_mime_type(file_name):
     return file_extension_lookup.get(file_extension)
 
 
-def filename_already_used(filename):
-    """Technique from https://stackoverflow.com/a/33843019"""
-    s3 = boto3.resource('s3')
-    exists = False
-    try:
-        s3.Object(current_app.config['S3_BUCKET'], filename).load()
-    except botocore.exceptions.ClientError as e:
-        if e.response['Error']['Code'] == "404":
-            exists = False
-        else:
-            raise
-    else:
-        exists = True
-    return exists
+def random_suffix():
+    return ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(3))
+
+
+def upload_new_object(f, filename):
+    """
+    Upload f under filename, or under filename with a random suffix if that
+    key is taken. Returns the key used. If-None-Match makes S3 refuse to
+    replace an existing object, so an upload never overwrites published media;
+    the task role's policy requires the header.
+    """
+    s3 = boto3.client('s3')
+    mime_type = get_mime_type(filename)
+    extra_args = {}
+    if mime_type == 'image/svg+xml':
+        # <img> tags ignore Content-Disposition, so the blog can still embed
+        # the file; opening its URL directly downloads it rather than running
+        # any script it contains.
+        extra_args['ContentDisposition'] = 'attachment'
+    key = filename
+    while True:
+        f.stream.seek(0)
+        try:
+            s3.put_object(Bucket=current_app.config['S3_BUCKET'], Key=key, Body=f.stream,
+                          ContentType=mime_type, IfNoneMatch='*', **extra_args)
+            return key
+        except botocore.exceptions.ClientError as e:
+            # PreconditionFailed: the key exists. ConditionalRequestConflict:
+            # another upload to the same key is in flight.
+            if e.response['Error']['Code'] not in ('PreconditionFailed', 'ConditionalRequestConflict'):
+                raise
+        fn, ext = path.splitext(filename)
+        key = '{}-{}{}'.format(fn, random_suffix(), ext)
 
 #
 # WTForms custom validators
@@ -195,16 +219,13 @@ def landing():
         # Get a safe filename
         f = form.file.data
         filename = secure_filename(f.filename)
-        unique_filename = False
-        while not unique_filename:
-            if filename_already_used(filename):
-                fn, ext = path.splitext(filename)
-                filename = '{}-{}{}'.format(fn, ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(3)), ext)
-                continue
-            unique_filename = True
-        # Upload to s3
-        s3 = boto3.client('s3')
-        s3.upload_fileobj(f.stream, current_app.config['S3_BUCKET'], filename, ExtraArgs={'ContentType': get_mime_type(filename)})
+        # secure_filename drops non-ASCII characters, which can leave only the
+        # extension (or nothing) behind.
+        fn, ext = path.splitext(filename)
+        if not fn or not ext:
+            filename = 'upload-{}.{}'.format(random_suffix(), f.filename.rsplit('.', 1)[-1].lower())
+        filename = upload_new_object(f, filename)
+        app.logger.info("%s uploaded %s", session.get('github_login'), filename)
         return render_template('success.html', context={'heading': "Your file is up!" ,
                                                         'url': "https://{}.s3.amazonaws.com/{}".format(current_app.config['S3_BUCKET'], filename) })
     return render_template('uploader.html', context={'heading': 'Upload Media', 'limit': current_app.config['MAX_CONTENT_LENGTH']//1024//1024}, form=form)
@@ -223,6 +244,11 @@ def logout():
 
 @app.route('/auth/github/callback')
 def authorized():
+    expected_state = session.pop('oauth_state', None)
+    if not expected_state or not secrets.compare_digest(expected_state, request.args.get('state', '')):
+        app.logger.warning("GitHub callback without a matching login attempt.")
+        abort(400)
+
     app.logger.debug("Requesting Access Token")
     r = requests.post(ACCESS_TOKEN_URL, headers={'accept': 'application/json'},
                                         data={'client_id': app.config['GITHUB_CLIENT_ID'],
@@ -239,8 +265,11 @@ def authorized():
 
     if scope == 'read:org':
         app.logger.debug("Requesting User Organization Info")
-        r = requests.get(ORGS_URL, headers={'accept': 'application/json',
-                                            'authorization': 'token {}'.format(access_token)})
+        auth_headers = {'accept': 'application/json',
+                        'authorization': 'token {}'.format(access_token)}
+        r = requests.get(ORGS_URL, headers=auth_headers)
+        u = requests.get(USER_URL, headers=auth_headers)
+        github_login = u.json().get('login') if u.status_code == 200 else None
 
         app.logger.debug("Revoking Github Access Token")
         d = requests.delete(REVOKE_TOKEN_URL,
@@ -256,11 +285,13 @@ def authorized():
                 valid_until = (datetime.utcnow() + timedelta(seconds=60*30)).strftime('%Y-%m-%d %H:%M:%S')
                 session['valid_until'] = valid_until
                 session['logged_in'] = "yes"
+                session['github_login'] = github_login
+                app.logger.info("%s logged in", github_login)
                 if next and is_safe_url(next):
                     return redirect(next)
                 return redirect(url_for('landing'))
             else:
-                app.logger.warning("Log in attempt from Github user who is not a member of LIL.")
+                app.logger.warning("Log in attempt from Github user %s, who is not a member of LIL.", github_login)
                 abort(401)
         else:
             app.logger.error("Failed request for user orgs. Gitub says {}".format(data['message']))
