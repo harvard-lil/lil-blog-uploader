@@ -18,13 +18,18 @@ Files go to the `lil-blog-media` S3 bucket under their own name, or with a
 random suffix if that name is taken; S3 refuses any upload that would replace
 an existing object. The task's IAM role supplies the AWS credentials.
 
-For development, [install
-Poetry](https://python-poetry.org/docs/#installation) and run
+For development, [install uv](https://docs.astral.sh/uv/getting-started/installation/)
+and run the tests and linter:
 
-    poetry install
+    uv run pytest
+    uv run ruff check .
 
-in this directory to set up the environment. With no Access in front of it,
-run the app in debug mode and name a stand-in user:
+With no Access in front of it, run the app in debug mode and name a stand-in
+user:
 
     DEV_USER_EMAIL=you@law.harvard.edu FLASK_SECRET_KEY=dev S3_BUCKET=... \
-      poetry run flask --app app --debug run
+      uv run flask --app app --debug run
+
+Dependencies are declared in `pyproject.toml` and locked in `uv.lock`;
+`uv lock --upgrade` refreshes them. The image installs exactly the locked set
+(`uv sync --locked --no-dev`) on Python 3.14.
