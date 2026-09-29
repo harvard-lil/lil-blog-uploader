@@ -2,7 +2,6 @@ import re
 from ast import literal_eval
 import boto3
 import botocore
-import imghdr
 import jwt
 from os import environ, path
 import random
@@ -99,6 +98,12 @@ file_extension_lookup = {
     'svg': 'image/svg+xml'
 }
 
+def header_matches(file, test):
+    """Apply test to the file's first bytes, leaving the file at its start."""
+    header = file.read(16)
+    file.seek(0)
+    return test(header)
+
 def validate_pdf(file):
     valid = b'%PDF-' in file.read(10)
     file.seek(0)
@@ -111,9 +116,12 @@ def validate_svg(file):
         re.DOTALL
     )
 
-    contents = file.read().decode('utf-8')
-
-    file.seek(0)
+    try:
+        contents = file.read().decode('utf-8')
+    except UnicodeDecodeError:
+        return False
+    finally:
+        file.seek(0)
 
     return regex.match(contents) is not None
 
@@ -123,19 +131,19 @@ def validate_svg(file):
 mime_type_lookup = {
     'image/jpeg': {
         'new_extension': 'jpg',
-        'valid_file': lambda f: imghdr.what(f) == 'jpeg',
+        'valid_file': lambda f: header_matches(f, lambda h: h.startswith(b'\xff\xd8\xff')),
     },
     'image/png': {
         'new_extension': 'png',
-        'valid_file': lambda f: imghdr.what(f) == 'png',
+        'valid_file': lambda f: header_matches(f, lambda h: h.startswith(b'\x89PNG\r\n\x1a\n')),
     },
     'image/gif': {
         'new_extension': 'gif',
-        'valid_file': lambda f: imghdr.what(f) == 'gif',
+        'valid_file': lambda f: header_matches(f, lambda h: h[:6] in (b'GIF87a', b'GIF89a')),
     },
     'image/webp': {
         'new_extension': 'webp',
-        'valid_file': lambda f: imghdr.what(f) == 'webp',
+        'valid_file': lambda f: header_matches(f, lambda h: h[:4] == b'RIFF' and h[8:12] == b'WEBP'),
     },
     'image/svg+xml': {
         'new_extension': 'svg',
@@ -219,9 +227,10 @@ def landing():
             filename = 'upload-{}.{}'.format(random_suffix(), f.filename.rsplit('.', 1)[-1].lower())
         filename = upload_new_object(f, filename)
         app.logger.info("%s uploaded %s", g.user_email, filename)
-        return render_template('success.html', context={'heading': "Your file is up!" ,
-                                                        'url': "https://{}.s3.amazonaws.com/{}".format(current_app.config['S3_BUCKET'], filename) })
-    return render_template('uploader.html', context={'heading': 'Upload Media', 'limit': current_app.config['MAX_CONTENT_LENGTH']//1024//1024}, form=form)
+        url = "https://{}.s3.amazonaws.com/{}".format(current_app.config['S3_BUCKET'], filename)
+        return render_template('success.html', context={'heading': "Your file is up!", 'url': url})
+    limit = current_app.config['MAX_CONTENT_LENGTH'] // 1024 // 1024
+    return render_template('uploader.html', context={'heading': 'Upload Media', 'limit': limit}, form=form)
 
 
 @app.route('/health')
